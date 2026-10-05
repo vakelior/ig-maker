@@ -7,6 +7,11 @@ Usage:
     python ig_signup.py            # create 1 account
     python ig_signup.py 3          # create 3 accounts (with delay between them)
 
+Proxy support:
+    Set the PROXY env var to a real residential/ISP proxy:
+        PROXY="http://user:pass@host:port" python ig_signup.py
+    Without PROXY it falls back to free public proxies (usually already blocked by IG).
+
 Output: each account is printed as JSON and appended to accounts.json
 (also uploaded as a workflow artifact).
 """
@@ -17,6 +22,7 @@ import string
 import re
 import time
 import sys
+import os
 import secrets
 import requests
 
@@ -151,6 +157,29 @@ class TempMail:
                 return c.group(1)
         return None
 
+def fetch_free_proxies():
+    """Scrape free public proxies. NOTE: these are datacenter IPs and are
+    almost always already blocked by Instagram. Kept here so it is explicit."""
+    out = []
+    try:
+        r = requests.get("https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/all/data.txt",
+                         timeout=15).text
+        for line in r.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            out.append("http://" + line)
+    except Exception as e:
+        print(f"[!] proxy list fetch failed: {e}", flush=True)
+    return out
+
+def get_proxy():
+    p = os.environ.get("PROXY") or os.environ.get("IG_PROXY")
+    if p:
+        return p
+    plist = fetch_free_proxies()
+    return random.choice(plist) if plist else None
+
 def make_account():
     tm = TempMail()
     addr = tm.create()
@@ -163,6 +192,17 @@ def make_account():
 
     cl = Client()
     cl.delay_range = [2, 4]
+
+    proxy = get_proxy()
+    if proxy:
+        try:
+            before = cl._send_public_request("https://api.ipify.org/")
+            cl.set_proxy(proxy)
+            after = cl._send_public_request("https://api.ipify.org/")
+            print(f"[PROXY] {proxy}", flush=True)
+            print(f"[IP] before={before}  after={after}", flush=True)
+        except Exception as e:
+            print(f"[!] proxy failed, continuing without: {e}", flush=True)
 
     def h(username, choice=None):
         for _ in range(40):
