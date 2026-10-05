@@ -1,0 +1,33 @@
+name: instagram-signup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  signup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Create Instagram account
+        run: python ig_signup.py 1
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: instagram-account
+          path: accounts.json
